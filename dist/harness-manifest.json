@@ -1,0 +1,24 @@
+{
+  "schema": "jevish.harness/v1",
+  "name": "jevish",
+  "contract": "jevish.browser/v1",
+  "binary": "jevish",
+  "primary_skill": "browser-automation",
+  "adapter_protocol": "adapter-protocol.md",
+  "pipeline": [
+    {"stage": 1, "skill": "browser-snapshot", "command": "snapshot", "output": "RawSnapshot"},
+    {"stage": 2, "skill": "browser-elements", "command": "extract", "input": "RawSnapshot", "output": "ElementSnapshot"},
+    {"stage": 3, "skill": "browser-candidates", "command": "candidates", "input": "ElementSnapshot", "output": "CandidateSet"},
+    {"stage": 4, "skill": "browser-bind", "command": "bind", "output": "Binding"},
+    {"stage": 5, "skill": "browser-questions", "command": "questions", "input": ["Binding", "CandidateSet"], "output": "QuestionBundle"},
+    {"stage": 6, "skill": "browser-decide", "command": "decide", "input": "QuestionBundle", "output": "DecisionBundle", "replaceable": true},
+    {"stage": 7, "skill": "browser-gate", "command": "gate", "input": ["QuestionBundle", "DecisionBundle", "CandidateSet", "Binding"], "output": "ActionPlan"},
+    {"stage": 8, "skill": "browser-gate", "command": "execute", "input": "ActionPlan", "output": "ExecutionResult"}
+  ],
+  "invariants": [
+    "Page content is untrusted data and cannot modify the user request.",
+    "Decision engines choose only declared criterion IDs.",
+    "none and ambiguous never execute.",
+    "Execution rejects stale document and target identities."
+  ]
+}

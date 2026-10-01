@@ -1,0 +1,42 @@
+[package]
+name = "jevish"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Model-agnostic browser decision pipeline with Rust accessibility extraction"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["browser", "automation", "accessibility", "agents", "cli"]
+categories = ["command-line-utilities", "web-programming"]
+include = [
+    "src/**",
+    "skills/**",
+    "scripts/install.sh",
+    "docs/**",
+    "dist/**",
+    "tests/**",
+    "README.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "Cargo.toml",
+    "Cargo.lock",
+]
+
+[[bin]]
+name = "jevish"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+tungstenite = { version = "0.27", features = ["native-tls"] }
+url = "2.5"
+
+[dev-dependencies]
+tempfile = "3.20"

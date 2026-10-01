@@ -1,0 +1,47 @@
+{
+  "contract": "jevish.browser/v1",
+  "backend": "fixture",
+  "snapshot_id": "fixture-snapshot",
+  "document": {
+    "url": "https://example.test/checkout",
+    "title": "Checkout",
+    "context_id": "tab-1",
+    "revision": "nav-1"
+  },
+  "captured_at_ms": 0,
+  "nodes": [
+    {
+      "node_id": "root",
+      "parent_id": null,
+      "backend_node_id": 1,
+      "ignored": false,
+      "role": "region",
+      "name": "Checkout",
+      "description": "",
+      "value": "",
+      "properties": {}
+    },
+    {
+      "node_id": "continue",
+      "parent_id": "root",
+      "backend_node_id": 2,
+      "ignored": false,
+      "role": "button",
+      "name": "Continue",
+      "description": "Continue to payment",
+      "value": "",
+      "properties": {"focusable": {"value": true}}
+    },
+    {
+      "node_id": "cancel",
+      "parent_id": "root",
+      "backend_node_id": 3,
+      "ignored": false,
+      "role": "button",
+      "name": "Cancel",
+      "description": "Leave checkout",
+      "value": "",
+      "properties": {"focusable": {"value": true}}
+    }
+  ]
+}
