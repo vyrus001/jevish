@@ -12,6 +12,55 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tungstenite::{Message, WebSocket, connect, stream::MaybeTlsStream};
 use url::Url;
 
+const PREPARE_FILL: &str = r#"function(){
+this.focus();
+if(typeof this.select==='function')this.select();
+const prototype=this instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:this instanceof HTMLInputElement?HTMLInputElement.prototype:Object.getPrototypeOf(this);
+const descriptor=Object.getOwnPropertyDescriptor(prototype,'value');
+if(!descriptor||!descriptor.set)throw new Error('target has no native value setter');
+descriptor.set.call(this,'');
+this.dispatchEvent(new InputEvent('input',{bubbles:true,composed:true,inputType:'deleteContentBackward',data:null}));
+return this.value;
+}"#;
+
+const PREPARE_TYPE: &str = r#"function(){
+this.focus();
+if(typeof this.setSelectionRange==='function'){const end=(this.value||'').length;this.setSelectionRange(end,end);}
+return this.value||'';
+}"#;
+
+const COMMIT_TEXT: &str = r#"async function(){
+this.dispatchEvent(new Event('change',{bubbles:true}));
+this.blur();
+await Promise.resolve();
+await new Promise(resolve=>setTimeout(resolve,0));
+return this.value;
+}"#;
+
+const SET_SELECT_VALUE: &str = r#"async function(v){
+this.focus();
+const descriptor=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');
+descriptor.set.call(this,v);
+this.dispatchEvent(new Event('input',{bubbles:true,composed:true}));
+this.dispatchEvent(new Event('change',{bubbles:true}));
+this.blur();
+await Promise.resolve();
+await new Promise(resolve=>setTimeout(resolve,0));
+return this.value;
+}"#;
+
+fn verified_value(operation: Operation, expected: &str, output: Value) -> Result<Value> {
+    let actual = output
+        .as_str()
+        .context("browser action returned no field value")?;
+    if actual != expected {
+        bail!(
+            "ACTION_NOT_APPLIED: {operation:?} expected field value {expected:?}, observed {actual:?}"
+        )
+    }
+    Ok(output)
+}
+
 pub struct CdpBackend {
     socket: WebSocket<MaybeTlsStream<TcpStream>>,
     next_id: u64,
@@ -107,6 +156,34 @@ impl CdpBackend {
             bail!("browser action failed: {exception}")
         }
         Ok(result["result"]["value"].clone())
+    }
+
+    fn insert_text(&mut self, text: &str) -> Result<()> {
+        self.call("Input.insertText", json!({"text": text}))?;
+        Ok(())
+    }
+
+    fn fill(&mut self, object: &str, value: &str) -> Result<Value> {
+        self.call_on(object, PREPARE_FILL, vec![])?;
+        self.insert_text(value)?;
+        let output = self.call_on(object, COMMIT_TEXT, vec![])?;
+        verified_value(Operation::Fill, value, output)
+    }
+
+    fn type_text(&mut self, object: &str, value: &str) -> Result<Value> {
+        let initial = self.call_on(object, PREPARE_TYPE, vec![])?;
+        let initial = initial
+            .as_str()
+            .context("browser action returned no initial field value")?;
+        let expected = format!("{initial}{value}");
+        self.insert_text(value)?;
+        let output = self.call_on(object, COMMIT_TEXT, vec![])?;
+        verified_value(Operation::Type, &expected, output)
+    }
+
+    fn select(&mut self, object: &str, value: &str) -> Result<Value> {
+        let output = self.call_on(object, SET_SELECT_VALUE, vec![json!(value)])?;
+        verified_value(Operation::Select, value, output)
     }
 }
 
@@ -226,16 +303,36 @@ impl BrowserBackend for CdpBackend {
                         bail!("STALE_TARGET: target identity changed")
                     }
                 }
-                let value = plan.value.clone().map(Value::String).into_iter().collect();
+                let value = plan.value.as_deref();
                 let output = match operation {
-                    Operation::Click => self.call_on(&object, "function(){this.click();return true}", vec![])?,
-                    Operation::Focus => self.call_on(&object, "function(){this.focus();return true}", vec![])?,
-                    Operation::Fill => self.call_on(&object, "function(v){this.focus();this.value=v;this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}));return this.value}", value)?,
-                    Operation::Type => self.call_on(&object, "function(v){this.focus();this.value=(this.value||'')+v;this.dispatchEvent(new Event('input',{bubbles:true}));return this.value}", value)?,
-                    Operation::Check => self.call_on(&object, "function(){if(!this.checked)this.click();return !!this.checked}", vec![])?,
-                    Operation::Uncheck => self.call_on(&object, "function(){if(this.checked)this.click();return !!this.checked}", vec![])?,
-                    Operation::Select => self.call_on(&object, "function(v){this.value=v;this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}));return this.value}", value)?,
-                    Operation::GetText => self.call_on(&object, "function(){return this.innerText||this.textContent||this.value||''}", vec![])?,
+                    Operation::Click => {
+                        self.call_on(&object, "function(){this.click();return true}", vec![])?
+                    }
+                    Operation::Focus => {
+                        self.call_on(&object, "function(){this.focus();return true}", vec![])?
+                    }
+                    Operation::Fill => self.fill(&object, value.context("fill requires value")?)?,
+                    Operation::Type => {
+                        self.type_text(&object, value.context("type requires value")?)?
+                    }
+                    Operation::Check => self.call_on(
+                        &object,
+                        "function(){if(!this.checked)this.click();return !!this.checked}",
+                        vec![],
+                    )?,
+                    Operation::Uncheck => self.call_on(
+                        &object,
+                        "function(){if(this.checked)this.click();return !!this.checked}",
+                        vec![],
+                    )?,
+                    Operation::Select => {
+                        self.select(&object, value.context("select requires value")?)?
+                    }
+                    Operation::GetText => self.call_on(
+                        &object,
+                        "function(){return this.innerText||this.textContent||this.value||''}",
+                        vec![],
+                    )?,
                     _ => unreachable!(),
                 };
                 Some(output)
@@ -250,5 +347,29 @@ impl BrowserBackend for CdpBackend {
             result,
             document,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn react_fill_uses_native_setter_then_browser_text_input() {
+        assert!(PREPARE_FILL.contains("Object.getOwnPropertyDescriptor(prototype,'value')"));
+        assert!(PREPARE_FILL.contains("deleteContentBackward"));
+        assert!(COMMIT_TEXT.contains("change"));
+        assert!(COMMIT_TEXT.contains("this.blur()"));
+    }
+
+    #[test]
+    fn post_action_verification_rejects_silent_controlled_input_reset() {
+        let error = verified_value(Operation::Fill, "iam-user", json!(""))
+            .expect_err("empty controlled input must fail");
+        assert!(error.to_string().contains("ACTION_NOT_APPLIED"));
+        assert_eq!(
+            verified_value(Operation::Fill, "iam-user", json!("iam-user")).unwrap(),
+            json!("iam-user")
+        );
     }
 }

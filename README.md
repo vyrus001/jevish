@@ -147,8 +147,8 @@ A question contains instructions and a closed criterion set:
   "id": "target",
   "instruction": "Choose the one actionable element matching the user request.",
   "criteria": [
-    {"id": "e1", "label": "button 'Continue' in region: Checkout"},
-    {"id": "e2", "label": "button 'Cancel' in region: Checkout"},
+    {"id": "e1", "label": "button \"Continue\" in region: Checkout"},
+    {"id": "e2", "label": "button \"Cancel\" in region: Checkout"},
     {"id": "none", "label": "No matching element"},
     {"id": "ambiguous", "label": "Several elements match equally"}
   ]

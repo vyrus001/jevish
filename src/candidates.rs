@@ -2,6 +2,16 @@ use crate::contracts::{CONTRACT_VERSION, CandidateSet, Element, ElementSnapshot,
 
 fn allowed(operation: Operation, element: &Element) -> bool {
     let role = element.role.as_str();
+    if element.states.get("disabled") == Some(&true) {
+        return false;
+    }
+    if matches!(
+        operation,
+        Operation::Fill | Operation::Type | Operation::Select
+    ) && element.states.get("readonly") == Some(&true)
+    {
+        return false;
+    }
     match operation {
         Operation::Fill => matches!(
             role,
@@ -50,5 +60,54 @@ pub fn candidates(snapshot: &ElementSnapshot, operation: Operation) -> Candidate
             .filter(|element| allowed(operation, element))
             .cloned()
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contracts::{DocumentIdentity, ElementSnapshot};
+    use std::collections::BTreeMap;
+
+    fn element(role: &str, disabled: bool, readonly: bool) -> Element {
+        Element {
+            id: role.into(),
+            backend_node_id: Some(1),
+            role: role.into(),
+            name: "Target".into(),
+            description: String::new(),
+            value: String::new(),
+            context: vec![],
+            states: BTreeMap::from([("disabled".into(), disabled), ("readonly".into(), readonly)]),
+            attributes: BTreeMap::new(),
+            fingerprint: "f".into(),
+        }
+    }
+
+    #[test]
+    fn excludes_disabled_and_readonly_action_targets() {
+        let snapshot = ElementSnapshot {
+            contract: CONTRACT_VERSION.into(),
+            backend: "test".into(),
+            snapshot_id: "s".into(),
+            document: DocumentIdentity {
+                url: "u".into(),
+                title: "t".into(),
+                context_id: "c".into(),
+                revision: "r".into(),
+            },
+            captured_at_ms: 0,
+            elements: vec![
+                element("button", true, false),
+                element("textbox", false, true),
+                element("textbox", false, false),
+            ],
+        };
+        assert!(
+            candidates(&snapshot, Operation::Click)
+                .candidates
+                .is_empty()
+        );
+        assert_eq!(candidates(&snapshot, Operation::Fill).candidates.len(), 1);
     }
 }
