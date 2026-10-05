@@ -3,9 +3,16 @@ use crate::contracts::{
 };
 
 fn element_label(element: &crate::contracts::Element) -> String {
-    let mut label = format!("{} '{}'", element.role, element.name);
+    let mut label = format!(
+        "{} {}",
+        element.role,
+        serde_json::to_string(&element.name).expect("strings always serialize")
+    );
     if !element.description.is_empty() {
-        label.push_str(&format!(" described as '{}'", element.description));
+        label.push_str(&format!(
+            " described as {}",
+            serde_json::to_string(&element.description).expect("strings always serialize")
+        ));
     }
     if !element.context.is_empty() {
         label.push_str(&format!(" in {}", element.context.join(" > ")));
