@@ -5,7 +5,7 @@ description: Resolve jevish choice questions with a local heuristic or any exter
 
 # Browser decide
 
-Decision engines must return one probability distribution per question. Every key must come from that question's criteria.
+Decision engines must return one normalized probability distribution per question. Every key must come from that question's criteria. Zero-probability choices may be omitted, but the selected choice must be present.
 
 For offline smoke tests:
 
