@@ -173,7 +173,7 @@ A decision engine returns one normalized probability distribution:
 The gate rejects:
 
 - IDs absent from the original criteria;
-- incomplete or non-normalized distributions;
+- empty distributions, unknown IDs, or non-normalized distributions (zero-probability choices may be omitted);
 - `none` and `ambiguous` outcomes;
 - selected probability below the configured threshold;
 - winning margin below the configured threshold;
