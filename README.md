@@ -189,6 +189,8 @@ Navigation-capable `open` and `click` actions use bounded CDP waits. When dispat
 
 Navigation timing is separate from ordinary CDP command timing. Ordinary commands retain a 30-second response allowance, while full accessibility snapshots allow 120 seconds for large, complex pages.
 
+Text entry uses native input or textarea value setters with bubbled `input` and `change` events, then verifies the value across a bounded post-blur stabilization window. Successful execution reports only verification state, not the field value. A framework rerender that clears or changes the value returns `ACTION_NOT_APPLIED` without including either value in the diagnostic.
+
 Pass a page-level `ws://` or `wss://` endpoint. Browser-level CDP endpoints are not currently resolved into page sessions automatically.
 
 ### Process adapters

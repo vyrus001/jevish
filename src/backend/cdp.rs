@@ -42,12 +42,25 @@ if(typeof this.setSelectionRange==='function'){const end=(this.value||'').length
 return this.value||'';
 }"#;
 
-const COMMIT_TEXT: &str = r#"async function(){
+const SET_TEXT_VALUE: &str = r#"function(v,inputType,data){
+this.focus();
+const prototype=this instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:this instanceof HTMLInputElement?HTMLInputElement.prototype:Object.getPrototypeOf(this);
+const descriptor=Object.getOwnPropertyDescriptor(prototype,'value');
+if(!descriptor||!descriptor.set)throw new Error('target has no native value setter');
+descriptor.set.call(this,v);
+this.dispatchEvent(new InputEvent('input',{bubbles:true,composed:true,inputType:inputType,data:data}));
+return this.value;
+}"#;
+
+const COMMIT_TEXT: &str = r#"async function(expected){
 this.dispatchEvent(new Event('change',{bubbles:true}));
 this.blur();
-await Promise.resolve();
-await new Promise(resolve=>setTimeout(resolve,0));
-return this.value;
+let stable=true;
+for(const delay of [0,16,50,100,250]){
+  await new Promise(resolve=>setTimeout(resolve,delay));
+  if(this.value!==expected)stable=false;
+}
+return {value:this.value,stable:stable};
 }"#;
 
 const SET_SELECT_VALUE: &str = r#"async function(v){
@@ -57,21 +70,25 @@ descriptor.set.call(this,v);
 this.dispatchEvent(new Event('input',{bubbles:true,composed:true}));
 this.dispatchEvent(new Event('change',{bubbles:true}));
 this.blur();
-await Promise.resolve();
-await new Promise(resolve=>setTimeout(resolve,0));
-return this.value;
+let stable=true;
+for(const delay of [0,16,50,100,250]){
+  await new Promise(resolve=>setTimeout(resolve,delay));
+  if(this.value!==v)stable=false;
+}
+return {value:this.value,stable:stable};
 }"#;
 
 fn verified_value(operation: Operation, expected: &str, output: Value) -> Result<Value> {
-    let actual = output
+    let actual = output["value"]
         .as_str()
         .context("browser action returned no field value")?;
-    if actual != expected {
-        bail!(
-            "ACTION_NOT_APPLIED: {operation:?} expected field value {expected:?}, observed {actual:?}"
-        )
+    let stable = output["stable"]
+        .as_bool()
+        .context("browser action returned no stability result")?;
+    if !stable || actual != expected {
+        bail!("ACTION_NOT_APPLIED: {operation:?} field value did not persist after stabilization")
     }
-    Ok(output)
+    Ok(json!({"verified": true}))
 }
 
 pub struct CdpBackend {
@@ -325,15 +342,14 @@ impl CdpBackend {
         Ok(outcome)
     }
 
-    fn insert_text(&mut self, text: &str) -> Result<()> {
-        self.call("Input.insertText", json!({"text": text}))?;
-        Ok(())
-    }
-
     fn fill(&mut self, object: &str, value: &str) -> Result<Value> {
         self.call_on(object, PREPARE_FILL, vec![])?;
-        self.insert_text(value)?;
-        let output = self.call_on(object, COMMIT_TEXT, vec![])?;
+        self.call_on(
+            object,
+            SET_TEXT_VALUE,
+            vec![json!(value), json!("insertText"), json!(value)],
+        )?;
+        let output = self.call_on(object, COMMIT_TEXT, vec![json!(value)])?;
         verified_value(Operation::Fill, value, output)
     }
 
@@ -343,8 +359,12 @@ impl CdpBackend {
             .as_str()
             .context("browser action returned no initial field value")?;
         let expected = format!("{initial}{value}");
-        self.insert_text(value)?;
-        let output = self.call_on(object, COMMIT_TEXT, vec![])?;
+        self.call_on(
+            object,
+            SET_TEXT_VALUE,
+            vec![json!(expected), json!("insertText"), json!(value)],
+        )?;
+        let output = self.call_on(object, COMMIT_TEXT, vec![json!(expected)])?;
         verified_value(Operation::Type, &expected, output)
     }
 
@@ -620,11 +640,14 @@ mod tests {
     }
 
     #[test]
-    fn react_fill_uses_native_setter_then_browser_text_input() {
+    fn react_text_write_uses_native_setter_and_stabilized_events() {
         assert!(PREPARE_FILL.contains("Object.getOwnPropertyDescriptor(prototype,'value')"));
         assert!(PREPARE_FILL.contains("deleteContentBackward"));
+        assert!(SET_TEXT_VALUE.contains("Object.getOwnPropertyDescriptor(prototype,'value')"));
+        assert!(SET_TEXT_VALUE.contains("new InputEvent('input'"));
         assert!(COMMIT_TEXT.contains("change"));
         assert!(COMMIT_TEXT.contains("this.blur()"));
+        assert!(COMMIT_TEXT.contains("[0,16,50,100,250]"));
     }
 
     #[test]
@@ -642,13 +665,25 @@ mod tests {
     }
 
     #[test]
-    fn post_action_verification_rejects_silent_controlled_input_reset() {
-        let error = verified_value(Operation::Fill, "iam-user", json!(""))
-            .expect_err("empty controlled input must fail");
+    fn async_controlled_input_reset_fails_without_exposing_value() {
+        let secret_test_value = "iam-user";
+        let delayed_reset = json!({
+            "value": "",
+            "stable": false,
+            "samples": [secret_test_value, ""]
+        });
+        let error = verified_value(Operation::Fill, secret_test_value, delayed_reset)
+            .expect_err("controlled input reset after a tick must fail");
         assert!(error.to_string().contains("ACTION_NOT_APPLIED"));
+        assert!(!error.to_string().contains(secret_test_value));
         assert_eq!(
-            verified_value(Operation::Fill, "iam-user", json!("iam-user")).unwrap(),
-            json!("iam-user")
+            verified_value(
+                Operation::Fill,
+                secret_test_value,
+                json!({"value": secret_test_value, "stable": true})
+            )
+            .unwrap(),
+            json!({"verified": true})
         );
     }
 
