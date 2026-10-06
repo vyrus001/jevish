@@ -15,7 +15,7 @@ use url::Url;
 
 const ACTION_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CDP_COMMAND_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
-const ACCESSIBILITY_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(45);
+const ACCESSIBILITY_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(120);
 const NAVIGATION_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
 const NAVIGATION_SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -631,7 +631,7 @@ mod tests {
     fn timeout_policy_keeps_navigation_bounded_and_allows_slow_snapshots() {
         assert_eq!(
             CdpBackend::response_timeout("Accessibility.getFullAXTree"),
-            Duration::from_secs(45)
+            Duration::from_secs(120)
         );
         assert_eq!(
             CdpBackend::response_timeout("Runtime.evaluate"),

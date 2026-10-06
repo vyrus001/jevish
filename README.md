@@ -187,7 +187,7 @@ The built-in CDP backend captures `Accessibility.getFullAXTree`, resolves native
 
 Navigation-capable `open` and `click` actions use bounded CDP waits. When dispatch is established but navigation replaces the execution context before CDP returns the command response, execution returns `navigation_indeterminate` instead of hanging. An observed completed navigation returns `navigation_completed` with structured navigation metadata. Harnesses must take a fresh snapshot before the next action after either result; document and target freshness checks still apply to every new plan.
 
-Navigation timing is separate from ordinary CDP command timing. Ordinary commands retain a 30-second response allowance, while full accessibility snapshots allow 45 seconds for complex pages.
+Navigation timing is separate from ordinary CDP command timing. Ordinary commands retain a 30-second response allowance, while full accessibility snapshots allow 120 seconds for large, complex pages.
 
 Pass a page-level `ws://` or `wss://` endpoint. Browser-level CDP endpoints are not currently resolved into page sessions automatically.
 
