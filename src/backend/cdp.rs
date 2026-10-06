@@ -14,7 +14,8 @@ use tungstenite::{Message, WebSocket, connect, stream::MaybeTlsStream};
 use url::Url;
 
 const ACTION_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
-const CDP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(10);
+const CDP_COMMAND_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+const ACCESSIBILITY_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(45);
 const NAVIGATION_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
 const NAVIGATION_SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -79,6 +80,14 @@ pub struct CdpBackend {
 }
 
 impl CdpBackend {
+    fn response_timeout(method: &str) -> Duration {
+        if method == "Accessibility.getFullAXTree" {
+            ACCESSIBILITY_SNAPSHOT_TIMEOUT
+        } else {
+            CDP_COMMAND_RESPONSE_TIMEOUT
+        }
+    }
+
     pub fn connect(endpoint: &str) -> Result<Self> {
         let url = Url::parse(endpoint).context("CDP endpoint must be a ws:// or wss:// URL")?;
         let (socket, _) = connect(url.as_str()).context("failed to connect to CDP endpoint")?;
@@ -97,7 +106,7 @@ impl CdpBackend {
                 .to_string()
                 .into(),
         ))?;
-        let deadline = Instant::now() + CDP_RESPONSE_TIMEOUT;
+        let deadline = Instant::now() + Self::response_timeout(method);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -616,6 +625,20 @@ mod tests {
         assert!(PREPARE_FILL.contains("deleteContentBackward"));
         assert!(COMMIT_TEXT.contains("change"));
         assert!(COMMIT_TEXT.contains("this.blur()"));
+    }
+
+    #[test]
+    fn timeout_policy_keeps_navigation_bounded_and_allows_slow_snapshots() {
+        assert_eq!(
+            CdpBackend::response_timeout("Accessibility.getFullAXTree"),
+            Duration::from_secs(45)
+        );
+        assert_eq!(
+            CdpBackend::response_timeout("Runtime.evaluate"),
+            Duration::from_secs(30)
+        );
+        assert!(ACTION_RESPONSE_TIMEOUT < CDP_COMMAND_RESPONSE_TIMEOUT);
+        assert!(NAVIGATION_SETTLE_TIMEOUT < ACCESSIBILITY_SNAPSHOT_TIMEOUT);
     }
 
     #[test]
